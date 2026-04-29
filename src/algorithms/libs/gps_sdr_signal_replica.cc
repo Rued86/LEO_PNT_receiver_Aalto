@@ -177,58 +177,50 @@ void gps_l1_ca_code_gen_complex_sampled(own::span<std::complex<float>> dest, uin
 // NUESTRA FUNCIÓN CUSTOM LEO PNT A 2.046 Mcps
 // ==============================================================================
 
-void gps_l1_ca_double_chip_rate_code_gen_float(own::span<float> dest, int32_t prn, uint32_t /*chip_shift*/)
+void gps_l1_ca_double_chip_rate_code_gen_float(own::span<float> dest, int32_t prn, uint32_t chip_shift)
 {
-    constexpr uint32_t code_length = 2046;
+    // El transmisor (gold_generator_chip_doubled.py) genera 2046 chips
+    // como continuación natural del LFSR de GPS C/A (sin reset en chip 1023).
+    // El receptor debe reproducir exactamente la misma secuencia.
     
-    uint32_t reg = prn & 0x7FF;
-    if (reg == 0) reg = 1;
-
-    for (uint32_t i = 0; i < code_length; i++) {
-        uint32_t out_bit = (reg >> 10) & 1;
-        // Float: 0 -> 1.0f, 1 -> -1.0f
-        dest[i] = (out_bit == 1) ? -1.0f : 1.0f; 
-        
-        uint32_t feedback = ((reg >> 10) ^ (reg >> 8)) & 1;
-        reg = ((reg << 1) & 0x7FF) | feedback;
-    }
+    constexpr uint32_t code_length = 1023;
+    constexpr uint32_t double_length = 2046;
+    
+    std::array<int32_t, code_length> ca_code_int{};
+    
+    // Generar los 1023 chips estándar GPS C/A
+    gps_l1_ca_code_gen_int(ca_code_int, prn, chip_shift);
+    
+    // Copiar dos veces — esto replica exactamente lo que hace el LFSR
+    // del transmisor cuando corre 2046 ciclos (el LFSR de GPS C/A tiene
+    // período exacto de 1023, por lo que chips 1024-2046 = chips 1-1023)
+    for (uint32_t ii = 0; ii < double_length; ++ii)
+        {
+            dest[ii] = static_cast<float>(ca_code_int[ii % code_length]);
+        }
 }
 
-
-void gps_l1_ca_double_chip_rate_code_gen_complex_sampled(own::span<std::complex<float>> dest, uint32_t prn, int32_t sampling_freq, uint32_t /*chip_shift*/)
+void gps_l1_ca_double_chip_rate_code_gen_complex_sampled(own::span<std::complex<float>> dest, uint32_t prn, int32_t sampling_freq, uint32_t chip_shift)
 {
     constexpr int32_t codeFreqBasis = 2046000;  // 2.046 Mcps
     constexpr int32_t codeLength = 2046;
     constexpr float tc = 1.0F / static_cast<float>(codeFreqBasis);
     const float ts = 1.0F / static_cast<float>(sampling_freq);
 
-    // 1. Generar la secuencia nativa LFSR de 11 bits
-    std::array<int32_t, codeLength> custom_code{};
-    
-    uint32_t reg = prn & 0x7FF;
-    if (reg == 0) reg = 1;
+    // Generar los 1023 chips reales de GPS C/A
+    std::array<std::complex<float>, 1023> code_aux{};
+    gps_l1_ca_code_gen_complex(code_aux, prn, chip_shift);
 
-    for (uint32_t i = 0; i < codeLength; i++) {
-        uint32_t out_bit = (reg >> 10) & 1;
-        custom_code[i] = (out_bit == 1) ? -1 : 1;
-        
-        uint32_t feedback = ((reg >> 10) ^ (reg >> 8)) & 1;
-        reg = ((reg << 1) & 0x7FF) | feedback;
-    }
+    // Upsampling sobre la secuencia de 2046 chips (= 2 repeticiones de 1023)
+    const int32_t samplesPerCode = static_cast<int32_t>(
+        static_cast<double>(sampling_freq) / (static_cast<double>(codeFreqBasis) / static_cast<double>(codeLength)));
 
-    // 2. Upsampling robusto estilo GNSS-SDR original
-    int32_t codeValueIndex;
-    int32_t samplesPerCode = static_cast<int32_t>(static_cast<double>(sampling_freq) / (static_cast<double>(codeFreqBasis) / static_cast<double>(codeLength)));
-
-    for (int32_t i = 0; i < samplesPerCode; i++) {
-        codeValueIndex = static_cast<int32_t>(std::floor(ts * static_cast<float>(i) / tc));
-        
-        // Prevención de overflow por redondeo
-        if (codeValueIndex >= codeLength) {
-            codeValueIndex = codeLength - 1;
+    for (int32_t i = 0; i < samplesPerCode; i++)
+        {
+            int32_t codeValueIndex = static_cast<int32_t>(std::floor(ts * static_cast<float>(i) / tc));
+            if (codeValueIndex >= codeLength) codeValueIndex = codeLength - 1;
+            
+            // El índice en el código real de 1023 chips (con wrap)
+            dest[i] = code_aux[codeValueIndex % 1023];
         }
-
-        // ¡CRÍTICO! Insertar en la parte imaginaria (0.0F, código) como pide el Costas Loop
-        dest[i] = std::complex<float>(0.0F, static_cast<float>(custom_code[codeValueIndex]));
-    }
 }
