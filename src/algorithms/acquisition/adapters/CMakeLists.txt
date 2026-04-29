@@ -58,6 +58,7 @@ set(ACQ_ADAPTER_HEADERS
     beidou_b3i_pcps_acquisition.h
     qzss_l1_pcps_acquisition.h
     qzss_l5i_pcps_acquisition.h
+    gps_l1_ca_double_chip_rate_acquisition.h
 )
 
 if(ENABLE_FPGA)

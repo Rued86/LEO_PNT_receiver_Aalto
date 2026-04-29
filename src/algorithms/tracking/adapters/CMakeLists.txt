@@ -78,6 +78,7 @@ set(TRACKING_ADAPTER_HEADERS
     gps_l1_ca_kf_tracking.h
     qzss_l1_dll_pll_tracking.h
     qzss_l5_dll_pll_tracking.h
+    gps_l1_ca_double_chip_rate_tracking.h
     ${OPT_TRACKING_ADAPTERS_HEADERS}
 )
 

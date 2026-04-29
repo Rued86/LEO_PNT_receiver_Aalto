@@ -201,7 +201,7 @@ dll_pll_veml_tracking::dll_pll_veml_tracking(const Dll_Pll_Conf &conf_)
                     if (d_trk_parameters.chip_rate > 0.0) {
                         d_code_chip_rate = d_trk_parameters.chip_rate;
                         // Si nos piden > 2 Mcps, es tu señal LEO de 2046 chips
-                        if (d_code_chip_rate > 2000000.0) {
+                        if (d_code_chip_rate >= 2046000.0) {
                             d_code_length_chips = 2046;
                         } else {
                             d_code_length_chips = static_cast<int32_t>(GPS_L1_CA_CODE_LENGTH_CHIPS);
@@ -826,16 +826,23 @@ void dll_pll_veml_tracking::start_tracking()
     Signal_[2] = d_acquisition_gnss_synchro->Signal[2];
     d_extend_correlation_symbols = d_trk_parameters.extend_correlation_symbols;
 
-    if (d_systemName == "GPS" && d_signal_type == "1C")
+if (d_systemName == "GPS" && d_signal_type == "1C")
         {
-            gps_l1_ca_code_gen_float(d_tracking_code, d_acquisition_gnss_synchro->PRN, 0);
-            // LEO PNT: extend replica from 1023 to 2046 chips by circular repetition
-            if (d_code_length_chips == 2046)
+            // 1. Generamos la longitud base según el modo (LEO o Normal)
+            if (d_trk_parameters.chip_rate >= 2046000.0)
                 {
-                    for (int32_t i = 1023; i < 2046; i++)
-                        {
-                            d_tracking_code[i] = d_tracking_code[i % 1023];
-                        }
+                    gps_l1_ca_double_chip_rate_code_gen_float(d_tracking_code, d_acquisition_gnss_synchro->PRN, 0);
+                }
+            else
+                {
+                    gps_l1_ca_code_gen_float(d_tracking_code, d_acquisition_gnss_synchro->PRN, 0);
+                }
+
+            // 2. EXTENSIÓN CIRCULAR EN MEMORIA (OBLIGATORIA)
+            // Esto copia el bloque 1 en el bloque 2 para que los punteros Early/Late puedan deslizarse
+            for (int32_t i = d_code_length_chips; i < 2 * d_code_length_chips; i++)
+                {
+                    d_tracking_code[i] = d_tracking_code[i % d_code_length_chips];
                 }
         }
     else if (d_systemName == "GPS" && d_signal_type == "2S")

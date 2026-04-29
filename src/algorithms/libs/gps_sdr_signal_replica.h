@@ -49,6 +49,7 @@ void gps_l1_ca_code_gen_complex_sampled(own::span<std::complex<float>> dest, uin
 
 void gps_l1_ca_double_chip_rate_code_gen_complex_sampled(own::span<std::complex<float>> dest, uint32_t prn, int32_t sampling_freq, uint32_t chip_shift);
 
+void gps_l1_ca_double_chip_rate_code_gen_float(own::span<float> dest, int32_t prn, uint32_t /*chip_shift*/);
 
 /** \} */
 /** \} */

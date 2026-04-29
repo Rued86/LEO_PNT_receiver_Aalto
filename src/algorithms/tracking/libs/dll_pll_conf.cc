@@ -62,6 +62,7 @@ void Dll_Pll_Conf::SetFromConfiguration(const ConfigurationInterface *configurat
     dump_filename = configuration->property(role + ".dump_filename", dump_filename);
     dump_mat = configuration->property(role + ".dump_mat", dump_mat);
     pll_bw_hz = configuration->property(role + ".pll_bw_hz", pll_bw_hz);
+    chip_rate = configuration->property(role + ".chip_rate", chip_rate);
 #if USE_GLOG_AND_GFLAGS
     if (FLAGS_pll_bw_hz != 0.0)
         {

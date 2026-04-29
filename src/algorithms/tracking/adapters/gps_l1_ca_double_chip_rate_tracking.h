@@ -48,9 +48,8 @@ public:
         unsigned int out_streams);
 
     //! Returns "GPS_L1_CA_DLL_PLL_Tracking"
-    inline std::string implementation() override
-    {
-        return "GPS_L1_CA_DLL_PLL_Tracking";
+    inline std::string implementation() override { 
+        return "GPS_L1_CA_Double_Chip_Rate_Tracking"; 
     }
 
 private:

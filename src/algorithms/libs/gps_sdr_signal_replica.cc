@@ -176,43 +176,59 @@ void gps_l1_ca_code_gen_complex_sampled(own::span<std::complex<float>> dest, uin
 // ==============================================================================
 // NUESTRA FUNCIÓN CUSTOM LEO PNT A 2.046 Mcps
 // ==============================================================================
+
+void gps_l1_ca_double_chip_rate_code_gen_float(own::span<float> dest, int32_t prn, uint32_t /*chip_shift*/)
+{
+    constexpr uint32_t code_length = 2046;
+    
+    uint32_t reg = prn & 0x7FF;
+    if (reg == 0) reg = 1;
+
+    for (uint32_t i = 0; i < code_length; i++) {
+        uint32_t out_bit = (reg >> 10) & 1;
+        // Float: 0 -> 1.0f, 1 -> -1.0f
+        dest[i] = (out_bit == 1) ? -1.0f : 1.0f; 
+        
+        uint32_t feedback = ((reg >> 10) ^ (reg >> 8)) & 1;
+        reg = ((reg << 1) & 0x7FF) | feedback;
+    }
+}
+
+
 void gps_l1_ca_double_chip_rate_code_gen_complex_sampled(own::span<std::complex<float>> dest, uint32_t prn, int32_t sampling_freq, uint32_t /*chip_shift*/)
 {
-    // 1. Aquí generamos la secuencia de 1023 chips, EXACTAMENTE igual que tu epy_block de Python
-    std::vector<int> ca_code(1023);
-    std::vector<int> g1(10, 1);
-    std::vector<int> g2(10, 1);
+    constexpr int32_t codeFreqBasis = 2046000;  // 2.046 Mcps
+    constexpr int32_t codeLength = 2046;
+    constexpr float tc = 1.0F / static_cast<float>(codeFreqBasis);
+    const float ts = 1.0F / static_cast<float>(sampling_freq);
+
+    // 1. Generar la secuencia nativa LFSR de 11 bits
+    std::array<int32_t, codeLength> custom_code{};
     
-    // Taps para PRN 1 al 5 (Simplificado para tu simulación)
-    int tap1 = 2, tap2 = 6; 
-    if(prn == 2) { tap1 = 3; tap2 = 7; }
-    
-    for (int i = 0; i < 1023; i++) {
-        int g2_out = g2[tap1 - 1] ^ g2[tap2 - 1];
-        int out_bit = g1[9] ^ g2_out;
-        ca_code[i] = (out_bit == 0) ? 1 : -1; // Mapeo a BPSK (1 y -1)
+    uint32_t reg = prn & 0x7FF;
+    if (reg == 0) reg = 1;
+
+    for (uint32_t i = 0; i < codeLength; i++) {
+        uint32_t out_bit = (reg >> 10) & 1;
+        custom_code[i] = (out_bit == 1) ? -1 : 1;
         
-        int next_g1 = g1[2] ^ g1[9];
-        int next_g2 = g2[1] ^ g2[2] ^ g2[5] ^ g2[7] ^ g2[8] ^ g2[9];
-        
-        // Desplazamiento
-        for (int j = 9; j > 0; j--) { g1[j] = g1[j - 1]; g2[j] = g2[j - 1]; }
-        g1[0] = next_g1;
-        g2[0] = next_g2;
+        uint32_t feedback = ((reg >> 10) ^ (reg >> 8)) & 1;
+        reg = ((reg << 1) & 0x7FF) | feedback;
     }
 
-    // 2. Definimos el chip rate customizado directamente aquí
-    double custom_chip_rate = 2046000.0;
-    
-    // Cuántas muestras reales (a 8.184M) dura un solo chip (a 2.046M)
-    double samples_per_chip = (double)sampling_freq / custom_chip_rate; 
-    
-    for (size_t i = 0; i < dest.size(); i++) {
-        // En qué índice del código C/A estamos para la muestra 'i'
-        // fmod asegura que si nos pasamos de 1023, volvamos al principio (bucle continuo)
-        int chip_index = (int)std::fmod(i / samples_per_chip, 1023.0);
+    // 2. Upsampling robusto estilo GNSS-SDR original
+    int32_t codeValueIndex;
+    int32_t samplesPerCode = static_cast<int32_t>(static_cast<double>(sampling_freq) / (static_cast<double>(codeFreqBasis) / static_cast<double>(codeLength)));
+
+    for (int32_t i = 0; i < samplesPerCode; i++) {
+        codeValueIndex = static_cast<int32_t>(std::floor(ts * static_cast<float>(i) / tc));
         
-        // Llenamos la réplica (Parte Real = BPSK, Parte Imaginaria = 0)
-        dest[i] = std::complex<float>(ca_code[chip_index], 0.0f);
+        // Prevención de overflow por redondeo
+        if (codeValueIndex >= codeLength) {
+            codeValueIndex = codeLength - 1;
+        }
+
+        // ¡CRÍTICO! Insertar en la parte imaginaria (0.0F, código) como pide el Costas Loop
+        dest[i] = std::complex<float>(0.0F, static_cast<float>(custom_code[codeValueIndex]));
     }
 }
